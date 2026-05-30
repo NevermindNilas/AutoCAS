@@ -13,7 +13,7 @@ AutoCAS is a fork of [Jamy-L/Pytorch-Contrast-Adaptive-Sharpening](https://githu
   - reciprocal-space sharpness interpolation `-1/lerp(8,5,amount)` (was linear-in-value, off mid-range),
   - dropped the host-syncing range asserts.
 - **fp16 NaN fix**: the core no longer produces `NaN` on near-black pixels (the old `reciprocal(mx+eps)` overflowed fp16 to `inf`, then `inf*0 = NaN`). fp16 now matches fp32 to ~1e-3.
-- **~1.8× faster core**, bit-exact: pairwise `min`/`max` instead of `torch.stack(...).min(dim=0)` (which materialized a `[N,B,C,H,W]` tensor every call), plus cross-result reuse in the diagonal fold-in.
+- **Faster inference path**: the soft-min/max core is bit-exact yet ~1.8× over a naive `torch.stack(...).min(dim=0)` (pairwise `min`/`max` + cross-result reuse, no `[N,B,C,H,W]` materialization). On top, the estimator's three blur convs fuse into one 5×5, the output tail fuses (`addcmul` + one in-place divide), and only the 1-channel luma is upcast for the fp32 blur maths — together ~1.08× more throughput (up to 1.16× on the auto path) and up to −32 MB fp16 peak VRAM, staying within the fp16 noise floor of fp32. See [Performance](#performance).
 
 ## Illustration
 
@@ -29,7 +29,7 @@ PyTorch is the only requirement for the filter itself:
 pip install torch
 ```
 
-The example/demo scripts additionally use `pillow` (and the original `example.py` uses `matplotlib`).
+`calibrate.py` additionally uses `pillow` and `numpy`.
 
 ## Usage
 
@@ -72,21 +72,23 @@ The shipped defaults are calibrated for clean anime 2× super-resolution output.
 
 ## Performance
 
-Single image, RTX 3090, CUDA, batch 1 (numbers vary with GPU load):
+Single image, RTX 3090, CUDA, batch 1, a frame upscaled to each resolution. FPS is the
+median of CUDA-event-timed iterations (numbers vary with GPU load):
 
-| mode | 1080p fp16 | 4K fp16 | 1080p fp32 |
-|------|-----------:|--------:|-----------:|
-| core CAS (`amount` fixed) | ~594 fps | ~164 fps | ~344 fps |
-| auto-tune (`amount=None`) | ~370 fps | ~104 fps | ~257 fps |
+| mode | 360p fp16 | 720p fp16 | 1080p fp16 | 720p fp32 |
+|------|----------:|----------:|-----------:|----------:|
+| fixed `amount` | ~3060 fps | ~1330 fps | ~650 fps | ~780 fps |
+| auto `amount=None` | ~1530 fps | ~880 fps | ~425 fps | ~590 fps |
+| tiled `auto_tiles=6` | ~1220 fps | ~360 fps | ~137 fps | ~300 fps |
 
-The core is bit-exact to the pre-optimization implementation; only `min`/`max` ordering changed, which never rounds.
+These are ~1.04–1.16× over the previous version (largest on the auto path) at up to −32 MB
+fp16 peak VRAM, from the conv/tail fusion and luma-only upcast described above. The
+soft-min/max core stays bit-exact; the fused arithmetic matches the fp32 reference within
+the fp16 noise floor (PSNR ≥ 70 dB, SSIM 1.0000, VMAF-NEG within ~0.05).
 
 ## Tooling
 
-- `calibrate.py` — fit the blur band `LO/HI` from a folder of frames.
-- `demo.py` — full-resolution before/after on real frames, with the auto amount each frame picked.
-- `demo_montage.py`, `ab_compare.py` — visual before/after montages.
-- `make_grain_dataset.py` — synthetic grain ladder for robustness testing.
+- `calibrate.py` — fit the blur band `LO/HI` from a folder of representative frames.
 
 ## Credits
 

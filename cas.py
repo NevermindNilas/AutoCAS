@@ -71,24 +71,35 @@ def _box(t, k):
     return F.avg_pool2d(_rep(t, k // 2), k, stride=1)
 
 
+# Fused Laplacian-of-(1-2-1 smooth). The old estimator ran 3 separable convs
+# (1-2-1 h, 1-2-1 v, 3x3 Laplacian); all linear -> one 5x5 = lap (X) smooth2d.
+_LAP5 = th.tensor([[0.,    0.0625,  0.125,  0.0625, 0.],
+                   [0.0625, 0.,    -0.125,  0.,     0.0625],
+                   [0.125, -0.125, -0.5,   -0.125,  0.125],
+                   [0.0625, 0.,    -0.125,  0.,     0.0625],
+                   [0.,     0.0625, 0.125,  0.0625, 0.]]).view(1, 1, 5, 5)
+
+
 def _feature_maps(x4):
     """Return (hf, contrast) maps used by the estimator and calibration.
 
     hf       : contrast-normalized high-frequency (blur) energy, [B,1,H,W]
     contrast : local RMS contrast, [B,1,H,W]
     """
-    x4 = x4.float()        # hf squares a large ratio; fp16 overflows (>65504) -> inf/NaN
-    Y = _luma(x4)
+    # The blur/contrast maths must be fp32 (hf squares a large ratio; fp16 overflows
+    # >65504 -> inf/NaN). But everything downstream needs only the 1-channel luma, so
+    # take luma in the input dtype FIRST and upcast that one channel -- not the full
+    # 3-channel input. For fp16 in, this is 1/3 the upcast traffic and allocation; the
+    # luma weighted-sum stays in [0,1] (no fp16 overflow) and its rounding is washed out
+    # by the global blur average. fp32 in: both .float() calls are no-ops -> identical.
+    Y = _luma(x4).float()
 
     # Blur: Laplacian on a pre-smoothed luma so broadband noise does not read as detail.
-    # Separable 1-2-1; pad only along the conv direction so the output keeps [H,W].
-    k121 = x4.new_tensor([1., 2., 1.]).view(1, 1, 1, 3) / 4.0
-    Yd = F.conv2d(F.pad(Y, (1, 1, 0, 0), mode='replicate'), k121)
-    Yd = F.conv2d(F.pad(Yd, (0, 0, 1, 1), mode='replicate'), k121.transpose(-1, -2))
-    lap_kernel = x4.new_tensor([[0., 1., 0.],
-                                [1., -4., 1.],
-                                [0., 1., 0.]]).view(1, 1, 3, 3)
-    lap = F.conv2d(_rep(Yd, 1), lap_kernel)
+    # The old path ran 3 convs (1-2-1 h, 1-2-1 v, then a 3x3 Laplacian). All three are
+    # linear -> their composition is a single 5x5 conv = lap (X) smooth2d (_LAP5). One
+    # conv + one replicate-pad(2): 1/3 the launches/passes; interior-identical (only the
+    # replicate border differs by pad-order, negligible in the global blur score).
+    lap = F.conv2d(_rep(Y, 2), _LAP5.to(device=Y.device, dtype=Y.dtype))
 
     mu = _box(Y, K)
     mu2 = _box(Y * Y, K)
@@ -233,14 +244,23 @@ def contrast_adaptive_sharpening(x, amount=0.8, better_diagonals=True, auto_tile
 
     # peak = -1 / lerp(8, 5, amount); interpolation happens in the DENOMINATOR
     # (reciprocal space), matching ffx_cas.h. denom in [5, 8] -> no EPSILON.
-    w = -amp * th.reciprocal(8.0 - 3.0 * amount)
+    # Fold the sign into the (tiny, broadcast [B,1,1,1]) coefficient so the per-pixel
+    # step is a single multiply instead of neg + mul.
+    w = amp * (-th.reciprocal(8.0 - 3.0 * amount))
 
     # The local conv filter is
     # 0 w 0
     # w 1 w
     # 0 w 0
-    div = th.reciprocal(1 + 4 * w)
-    output = ((b + d + f + h) * w + e) * div
+    # Fused tail: addcmul gives (e + sum4*w) in one pass; a single divide replaces
+    # reciprocal(den) + mul. Both are fewer full-tensor passes than the split form and,
+    # being single-rounded, are no less accurate than the reference arithmetic.
+    # w = -amp/(8-3a) in [-0.2, 0] (amp<=1, 8-3a in [5,8]) -> 1+4w in [0.2, 1] > 0, so
+    # the divide is always safe with no EPSILON, matching ffx_cas.h.
+    sum4 = b + d + f + h
+    den = w.mul(4.0).add_(1.0)                     # 1 + 4w
+    output = th.addcmul(e, sum4, w).div_(den)      # in-place div: no extra peak buffer
 
-    # Clipping between 0 and 1. It fixes previous divisions by 0 too.
-    return _from_4d(output.clamp(0, 1), nd)
+    # Clipping between 0 and 1. It fixes previous divisions by 0 too. In-place: output
+    # is the private div_ result, so the final saturate needs no new full-tensor buffer.
+    return _from_4d(output.clamp_(0, 1), nd)
