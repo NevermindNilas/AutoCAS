@@ -1,0 +1,15 @@
+# Frozen measurement contract
+
+Baseline: clean Git commit `556a2c2b0be894bcbfbb94d11d8f1af3ab9380af`, exact source retained in `tools/baseline_cas.py`.
+
+Target: warm tensor-to-tensor CAS inference and default automatic estimation. Separate optimized legacy behavior from the intentionally changed anime ML policy. Manual/tensor strength, padding, diagonals, rank, dtype, broadcasting and gradient semantics remain supported; unsupported native cases fall back to PyTorch.
+
+Numerical equivalence on finite [0,1] inputs: fp32 maximum absolute error <=2e-6; fp16 <=0.003 (baseline has intermediate half rounding). No input mutation. Outputs finite and in [0,1]. Tests cover ranks 2/3/4, C=1/2/3/4, batches, tiny/odd shapes, black/white/steps/noise, scalar/tensor strengths and nondefault streams. Gradient-bearing inputs or amounts use PyTorch. No claim of all-input formal equivalence.
+
+Performance: RTX 3090, Windows, PyTorch 2.13.0+cu132, 360p/720p/1080p fp16 and 720p fp32, batch1 RGB, identical three varying resident tensors, 20 warmup calls per arm, 60 samples per arm, randomized interleaving seed7301. CUDA-event p50/p95 plus synchronized host wall p50; incremental peak allocated VRAM. Cold initialization is excluded and reported separately. Practical keep threshold >5% median improvement and <=5% p95/allocated-memory regression. Include fresh held-out odd shape/batch confirmation. No tuning machine clocks/settings. Native module compilation/module driver storage is outside torch allocation counters.
+
+Quality: split original source IDs before crop/degradation generation; no variants from the same original may cross train/validation/test. Compare old heuristic, trained policy and constrained oracle on identical held-out examples. Optimize ordinary VMAF subject to VMAF-NEG, reference envelope/ringing and flat-region noise constraints. Treat bypass as a distinct action because CAS amount=0 is still sharpening. Report mean quality, oracle regret, class/balanced accuracy, bypass and artifact-gate violation rate. Metrics and gates are measured safeguards, not proof of universally artifact-free anime output. Selection/checkpoint decisions use validation only; test remains held out.
+
+Final quality decision rule: among validation candidates with <=3% gate violations, maximize ordinary VMAF + 0.2*NEG. Seven actions: bypass, 0/.15/.3/.5/.7/.9 CAS amounts. This budget was chosen from validation behavior before final independent confirmation. An initial 320-source pilot motivated expansion to 1,024 originals. Final independent confirmation uses 255 additional originals after excluding development IDs/exact hashes; its actual fp16/fp32 outputs are scored. Test and confirmation metrics never select weights.
+
+Effort: profile dominant memory passes, implement one optional fused backend, then fit and select a tiny classifier using locally available anime/digital-art reference crops. Preserve reproducible scripts, raw timings, data manifests, training labels and model metadata.

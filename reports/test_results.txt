@@ -1,0 +1,12 @@
+torch.float16 diagonals=False: maximum error 0.0
+.torch.float32 diagonals=False: maximum error 0.0
+.torch.float16 diagonals=True: maximum error 0.0
+.torch.float32 diagonals=True: maximum error 0.0
+......blurred tiles torch.float32 1 error 0.0
+blurred tiles torch.float32 6 error 7.003545761108398e-07
+blurred tiles torch.float32 11 error 5.066394805908203e-07
+blurred tiles torch.float16 1 error 0.0
+blurred tiles torch.float16 6 error 0.0009765625
+blurred tiles torch.float16 11 error 0.0009765625
+...
+12 passed in 3.52s

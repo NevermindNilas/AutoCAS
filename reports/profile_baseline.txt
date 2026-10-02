@@ -1,0 +1,36 @@
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+                                          aten::minimum         2.30%     490.700us         4.43%     947.000us      10.522us       2.009ms        19.75%       2.009ms      22.326us            90
+                                          aten::maximum         1.90%     406.600us         3.95%     843.000us      10.538us       1.814ms        17.84%       1.814ms      22.678us            80
+_ZN2at6native18elementwise_kernelILi128ELi4EZNS0_22g...         0.00%       0.000us         0.00%       0.000us       0.000us       1.425ms        14.01%       1.425ms      23.748us            60
+_ZN2at6native18elementwise_kernelILi128ELi4EZNS0_22g...         0.00%       0.000us         0.00%       0.000us       0.000us       1.420ms        13.96%       1.420ms      23.662us            60
+                                       aten::avg_pool2d         0.41%      88.400us         0.81%     173.800us       8.690us       1.191ms        11.71%       1.191ms      59.559us            20
+_ZN2at6native49_GLOBAL__N__f7dcb9b0_16_AveragePool2d...         0.00%       0.000us         0.00%       0.000us       0.000us       1.191ms        11.71%       1.191ms      59.559us            20
+                                              aten::add         2.65%     566.700us         4.96%       1.060ms      11.781us       1.102ms        10.84%       1.102ms      12.248us            90
+                                              aten::mul         2.13%     454.400us         4.12%     879.200us      12.560us     727.555us         7.15%     727.555us      10.394us            70
+                                aten::replication_pad2d         2.79%     595.800us        13.04%       2.785ms      69.635us     592.201us         5.82%     620.040us      15.501us            40
+_ZN2at6native18elementwise_kernelILi128ELi4EZNS0_22g...         0.00%       0.000us         0.00%       0.000us       0.000us     585.870us         5.76%     585.870us      19.529us            30
+_ZN2at6native29vectorized_elementwise_kernelILi4ENS0...         0.00%       0.000us         0.00%       0.000us       0.000us     584.426us         5.75%     584.426us      19.481us            30
+                                aten::cudnn_convolution         0.83%     176.900us         1.16%     248.600us      24.860us     441.138us         4.34%     441.138us      44.114us            10
+_ZN5cudnn3cnn28conv2d_grouped_direct_kernelILb0ELb1E...         0.00%       0.000us         0.00%       0.000us       0.000us     441.138us         4.34%     441.138us      44.114us            10
+_ZN2at6native29vectorized_elementwise_kernelILi4ENS0...         0.00%       0.000us         0.00%       0.000us       0.000us     394.548us         3.88%     394.548us      19.727us            20
+_ZN2at6native29vectorized_elementwise_kernelILi4ENS0...         0.00%       0.000us         0.00%       0.000us       0.000us     393.842us         3.87%     393.842us      19.692us            20
+_ZN2at6native29vectorized_elementwise_kernelILi4ENS0...         0.00%       0.000us         0.00%       0.000us       0.000us     386.640us         3.80%     386.640us      19.332us            20
+                                            aten::clamp         2.37%     506.300us         6.05%       1.291ms      18.449us     381.815us         3.75%     381.815us       5.454us            70
+_ZN2at6native29vectorized_elementwise_kernelILi4EZZZ...         0.00%       0.000us         0.00%       0.000us       0.000us     377.557us         3.71%     377.557us       9.439us            40
+                                              aten::div         1.59%     339.300us         2.92%     623.900us      15.598us     326.262us         3.21%     326.262us       8.157us            40
+_ZN2at6native18elementwise_kernelILi128ELi4EZNS0_22g...         0.00%       0.000us         0.00%       0.000us       0.000us     315.954us         3.11%     315.954us      15.798us            20
+_ZN2at6native54_GLOBAL__N__d2ca5fb1_21_ReplicationPa...         0.00%       0.000us         0.00%       0.000us       0.000us     315.603us         3.10%     315.603us      10.520us            30
+                                              aten::sum         1.62%     345.300us         3.08%     658.500us      21.950us     300.055us         2.95%     300.055us      10.002us            30
+_ZN2at6native54_GLOBAL__N__d2ca5fb1_21_ReplicationPa...         0.00%       0.000us         0.00%       0.000us       0.000us     276.598us         2.72%     276.598us      27.660us            10
+                                          aten::addcmul         0.31%      65.400us         0.58%     124.000us      12.400us     264.791us         2.60%     264.791us      26.479us            10
+_ZN2at6native29vectorized_elementwise_kernelILi4EZZZ...         0.00%       0.000us         0.00%       0.000us       0.000us     264.791us         2.60%     264.791us      26.479us            10
+_ZN2at6native29vectorized_elementwise_kernelILi4ENS0...         0.00%       0.000us         0.00%       0.000us       0.000us     263.608us         2.59%     263.608us       8.787us            30
+                                              aten::sub         1.42%     302.500us         2.79%     595.200us      11.904us     255.640us         2.51%     255.640us       5.113us            50
+                                             aten::div_         0.17%      35.400us         0.37%      78.100us       7.810us     193.848us         1.91%     193.848us      19.385us            10
+                                             aten::sqrt         0.53%     114.200us         1.05%     223.300us      11.165us     178.906us         1.76%     178.906us       8.945us            20
+_ZN2at6native13reduce_kernelILi512ELi1ENS0_8ReduceOp...         0.00%       0.000us         0.00%       0.000us       0.000us     163.451us         1.61%     163.451us       8.173us            20
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+Self CPU time total: 21.359ms
+Self CUDA time total: 10.171ms

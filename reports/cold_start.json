@@ -1,0 +1,5 @@
+{
+  "warmup_ms": 24.068100001386483,
+  "boundary": "first NVRTC compile, CUDA module load, model upload and filtering; PyTorch import/device init excluded",
+  "persistent_disk_cache": false
+}

@@ -135,13 +135,9 @@ def estimate_amount(x4, tiles=0):
     hf, contrast = _feature_maps(x4)                        # computed in fp32
 
     if tiles > 0:
-        from _native import tiled_pool
-        score = tiled_pool(hf, contrast, tiles)
-        if score is None:
-            num = F.adaptive_avg_pool2d(hf * contrast, tiles)
-            den = F.adaptive_avg_pool2d(contrast, tiles) + EPSILON
-            score = num / den
-        amt = _to_amount(score)                             # per-tile blur demand
+        num = F.adaptive_avg_pool2d(hf * contrast, tiles)
+        den = F.adaptive_avg_pool2d(contrast, tiles) + EPSILON
+        amt = _to_amount(num / den)                         # per-tile blur demand
         amt = F.interpolate(amt, size=x4.shape[-2:], mode='bilinear', align_corners=False)
         return amt.to(dt)
 
@@ -161,25 +157,7 @@ def image_stats(x):
     return th.log(score + 1e-4)
 
 
-def warmup(x, auto_tiles=0):
-    """Initialize optional kernels/model before latency measurement or graph capture.
-
-    Use a representative tensor on the intended device/dtype. CUDA initialization
-    synchronizes once; ordinary filtering does not synchronize the host.
-    """
-    with th.inference_mode():
-        contrast_adaptive_sharpening(x, amount=.8)
-        contrast_adaptive_sharpening(x, amount=None, auto_tiles=auto_tiles)
-    if x.is_cuda:
-        from anime_selector import model_tensors
-        with th.cuda.device(x.device):
-            _, _, ready, _ = model_tensors(str(x.device))
-            th.cuda.synchronize(x.device)
-            # Includes any model upload when only the tiled estimator was warmed.
-            ready['complete'] = True
-
-
-def contrast_adaptive_sharpening(x, amount=0.8, better_diagonals=True, auto_tiles=0, auto_mode='anime'):
+def contrast_adaptive_sharpening(x, amount=0.8, better_diagonals=True, auto_tiles=0):
     """
     Performs a contrast adaptive sharpening on the batch of images x.
     The algorithm is directly implemented from FidelityFX's source code,
@@ -201,10 +179,6 @@ def contrast_adaptive_sharpening(x, amount=0.8, better_diagonals=True, auto_tile
     auto_tiles : int, optional
         Only used when amount is None. 0 -> single auto amount for the whole
         image. n>0 -> per-region amount map from an n x n tile grid.
-    auto_mode : {'anime', 'legacy'}
-        Learned anime selector by default; 'legacy' retains blur-band calibration.
-        Tiled calls retain the legacy region estimator. The learned selector has
-        an explicit bypass action for images that should receive no sharpening.
 
     Returns
     -------
@@ -214,25 +188,6 @@ def contrast_adaptive_sharpening(x, amount=0.8, better_diagonals=True, auto_tile
     assert x.dim() >= 2
 
     x4, nd = _to_4d(x)
-
-    bypass = False
-    if amount is None:
-        if auto_mode not in ('anime', 'legacy'):
-            raise ValueError("auto_mode must be 'anime' or 'legacy'")
-        if auto_mode == 'anime' and auto_tiles == 0:
-            from anime_selector import estimate_anime_amount
-            amount = estimate_anime_amount(x4)
-            bypass = True
-        else:
-            amount = estimate_amount(x4, tiles=auto_tiles)
-
-    # Native inference fuses the entire CAS core; all unsupported shapes, layouts,
-    # amount broadcasts and gradient-bearing calls retain the PyTorch path.
-    from _native import eligible, sharpen
-    if eligible(x4, amount):
-        native = sharpen(x4, amount, better_diagonals, bypass=bypass)
-        if native is not None:
-            return _from_4d(native, nd)
 
     # Reference samples the 3x3 neighborhood with CLAMP-TO-EDGE addressing.
     # torch's default pad mode is constant-zero, which injects a fake black
@@ -281,9 +236,10 @@ def contrast_adaptive_sharpening(x, amount=0.8, better_diagonals=True, auto_tile
     amp = th.sqrt(th.clamp(th.minimum(mn, lim) / mx.clamp(min=1e-4), 0.0, 1.0))
 
     # Resolve the sharpening amount.
-    if not th.is_tensor(amount):
+    if amount is None:
+        amount = estimate_amount(x4, tiles=auto_tiles)
+    elif not th.is_tensor(amount):
         amount = x4.new_tensor(float(amount))
-    bypass_mask = amount < 0 if bypass else None
     amount = th.clamp(amount, 0.0, 1.0)
 
     # peak = -1 / lerp(8, 5, amount); interpolation happens in the DENOMINATOR
@@ -307,7 +263,4 @@ def contrast_adaptive_sharpening(x, amount=0.8, better_diagonals=True, auto_tile
 
     # Clipping between 0 and 1. It fixes previous divisions by 0 too. In-place: output
     # is the private div_ result, so the final saturate needs no new full-tensor buffer.
-    output = output.clamp_(0, 1)
-    if bypass:
-        output = th.where(bypass_mask, x4, output)
-    return _from_4d(output, nd)
+    return _from_4d(output.clamp_(0, 1), nd)
